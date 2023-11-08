@@ -3,7 +3,8 @@ option go_package = "mutual.com/proto";
 package proto;
 
 service RicartAgrawala {
-    rpc Request (ReqMes) returns (ResMes);
+    rpc RequestAcces(ReqMes) returns (Ack);
+    rpc RespondAcces(ReqMes) returns (Ack);
 }
 
 message ReqMes{
@@ -11,7 +12,6 @@ message ReqMes{
     int32 lamportTimestamp = 2;
 }
 
-message ResMes{
-    string resMessage= 1;
-    int32 lamportTimestamp = 2;
+message Ack{
+    int32 statusCode= 1;
 }

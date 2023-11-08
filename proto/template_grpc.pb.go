@@ -19,14 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	RicartAgrawala_Request_FullMethodName = "/proto.RicartAgrawala/Request"
+	RicartAgrawala_RequestAcces_FullMethodName = "/proto.RicartAgrawala/RequestAcces"
+	RicartAgrawala_RespondAcces_FullMethodName = "/proto.RicartAgrawala/RespondAcces"
 )
 
 // RicartAgrawalaClient is the client API for RicartAgrawala service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RicartAgrawalaClient interface {
-	Request(ctx context.Context, in *ReqMes, opts ...grpc.CallOption) (*ResMes, error)
+	RequestAcces(ctx context.Context, in *ReqMes, opts ...grpc.CallOption) (*Ack, error)
+	RespondAcces(ctx context.Context, in *ReqMes, opts ...grpc.CallOption) (*Ack, error)
 }
 
 type ricartAgrawalaClient struct {
@@ -37,9 +39,18 @@ func NewRicartAgrawalaClient(cc grpc.ClientConnInterface) RicartAgrawalaClient {
 	return &ricartAgrawalaClient{cc}
 }
 
-func (c *ricartAgrawalaClient) Request(ctx context.Context, in *ReqMes, opts ...grpc.CallOption) (*ResMes, error) {
-	out := new(ResMes)
-	err := c.cc.Invoke(ctx, RicartAgrawala_Request_FullMethodName, in, out, opts...)
+func (c *ricartAgrawalaClient) RequestAcces(ctx context.Context, in *ReqMes, opts ...grpc.CallOption) (*Ack, error) {
+	out := new(Ack)
+	err := c.cc.Invoke(ctx, RicartAgrawala_RequestAcces_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ricartAgrawalaClient) RespondAcces(ctx context.Context, in *ReqMes, opts ...grpc.CallOption) (*Ack, error) {
+	out := new(Ack)
+	err := c.cc.Invoke(ctx, RicartAgrawala_RespondAcces_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +61,8 @@ func (c *ricartAgrawalaClient) Request(ctx context.Context, in *ReqMes, opts ...
 // All implementations must embed UnimplementedRicartAgrawalaServer
 // for forward compatibility
 type RicartAgrawalaServer interface {
-	Request(context.Context, *ReqMes) (*ResMes, error)
+	RequestAcces(context.Context, *ReqMes) (*Ack, error)
+	RespondAcces(context.Context, *ReqMes) (*Ack, error)
 	mustEmbedUnimplementedRicartAgrawalaServer()
 }
 
@@ -58,8 +70,11 @@ type RicartAgrawalaServer interface {
 type UnimplementedRicartAgrawalaServer struct {
 }
 
-func (UnimplementedRicartAgrawalaServer) Request(context.Context, *ReqMes) (*ResMes, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Request not implemented")
+func (UnimplementedRicartAgrawalaServer) RequestAcces(context.Context, *ReqMes) (*Ack, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RequestAcces not implemented")
+}
+func (UnimplementedRicartAgrawalaServer) RespondAcces(context.Context, *ReqMes) (*Ack, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RespondAcces not implemented")
 }
 func (UnimplementedRicartAgrawalaServer) mustEmbedUnimplementedRicartAgrawalaServer() {}
 
@@ -74,20 +89,38 @@ func RegisterRicartAgrawalaServer(s grpc.ServiceRegistrar, srv RicartAgrawalaSer
 	s.RegisterService(&RicartAgrawala_ServiceDesc, srv)
 }
 
-func _RicartAgrawala_Request_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _RicartAgrawala_RequestAcces_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ReqMes)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RicartAgrawalaServer).Request(ctx, in)
+		return srv.(RicartAgrawalaServer).RequestAcces(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RicartAgrawala_Request_FullMethodName,
+		FullMethod: RicartAgrawala_RequestAcces_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RicartAgrawalaServer).Request(ctx, req.(*ReqMes))
+		return srv.(RicartAgrawalaServer).RequestAcces(ctx, req.(*ReqMes))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RicartAgrawala_RespondAcces_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReqMes)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RicartAgrawalaServer).RespondAcces(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RicartAgrawala_RespondAcces_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RicartAgrawalaServer).RespondAcces(ctx, req.(*ReqMes))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -100,8 +133,12 @@ var RicartAgrawala_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*RicartAgrawalaServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "Request",
-			Handler:    _RicartAgrawala_Request_Handler,
+			MethodName: "RequestAcces",
+			Handler:    _RicartAgrawala_RequestAcces_Handler,
+		},
+		{
+			MethodName: "RespondAcces",
+			Handler:    _RicartAgrawala_RespondAcces_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
