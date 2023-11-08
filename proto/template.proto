@@ -1,0 +1,17 @@
+syntax = "proto3";
+option go_package = "mutual.com/proto";
+package proto;
+
+service RicartAgrawala {
+    rpc Request (ReqMes) returns (ResMes);
+}
+
+message ReqMes{
+    int32 nodeId= 1;
+    int32 lamportTimestamp = 2;
+}
+
+message ResMes{
+    string resMessage= 1;
+    int32 lamportTimestamp = 2;
+}
