@@ -9,18 +9,32 @@ import (
 	"sync"
 	
 	"golang.org/x/net/context"
-	hs "p2p.com/proto"
+	ras "p2p.com/proto"
 	"google.golang.org/grpc"
+)
+
+//De forskellige states en node kan have.
+type State int
+
+const (
+	RELEASED State = iota //Gør at værdierne forståes som integers, og sætter RELEASED til 0, WANTED til 1 og HELD til 2. Samt sætter RELEASED til initial værdi af state.
+	WANTED
+	HELD
 )
 
 //Creates the Node Struct. Definerer ligesom atts
 type Node struct {
-	Addr string
 
-	mu sync.Mutex
+	state 				State
+	Addr 				string
+	Id 					int
+	ResponseCounter 	int
+	LPTimestamp 		int
+	mu 					sync.Mutex
+	Peers 				map[string]ras.RicartAgrawalaClient
+	ReqQueue			[]string
 
-	Peers map[string]hs.HelloServiceClient
-	hs.UnimplementedHelloServiceServer //Denne her er nødvendig for at Node implementerer server interfacet genereret af protofilen.
+	ras.UnimplementedRicartAgrawalaServer //Denne her er nødvendig for at Node implementerer server interfacet genereret af protofilen.
 }
 
 //Denne metode "åbner" nodens server funtionalitet op. Definerer hvilket port noden er på.
@@ -32,7 +46,7 @@ func (node *Node) StartListening() {
 	}
 
 	grpcServer := grpc.NewServer()
-	hs.RegisterHelloServiceServer(grpcServer, node) //Dette registrerer noden som en værende en HelloServiceServer.
+	ras.RegisterRicartAgrawalaServer(grpcServer, node) //Dette registrerer noden som en værende en HelloServiceServer.
 
 	// Start listening for incoming connections
 	if err := grpcServer.Serve(lis); err != nil {
@@ -42,8 +56,11 @@ func (node *Node) StartListening() {
 
 //Dette er nodens "main" function.
 func (node *Node) Start() error {
-	node.Peers = make(map[string]hs.HelloServiceClient) //Instantierer nodens map over peers.
-
+	node.Peers = make(map[string]ras.RicartAgrawalaClient) //Instantierer nodens map over peers.
+	node.LPTimestamp = 0
+	node.ResponseCounter = 0
+	node.State = State.RELEASED
+	node.ReqQueue = make([]string, 0 , 10)
 	go node.StartListening() //Go routine med kald til "server" funktionaliteten.
 
 	//Hardcoded list af servere
@@ -64,18 +81,18 @@ func (node *Node) Start() error {
 	//Hver node sover mellem 0-5 sekunder, og så kalder de ellers sayHello gRPC endpoint i sine peers.
 	for {
 		time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
-		for key, peer := range node.Peers {
-			//Den giver sin egen adresse med i kaldet.
-			fmt.Println("I am Node(", node.Addr, ") and i am calling SayHello on Node(",  key, ")")
-			fmt.Println("...")
-			response, err := peer.SayHello(context.Background(), &hs.HelloRequest{Name: node.Addr})
-    		if err != nil {
-        		fmt.Println("Error making request to %s: %v", peer, err)
-    		}
-			//Og her printer den ellers respons message.
-			fmt.Println("I am Node(", node.Addr, ") and i got this response", response.Message,)
-			fmt.Println("...")
-		}
+		// for key, peer := range node.Peers {
+		// 	//Den giver sin egen adresse med i kaldet.
+		// 	fmt.Println("I am Node(", node.Id, ") and i am calling Request on Node(",  key, ")")
+		// 	fmt.Println("...")
+		// 	response, err := peer.Request(context.Background(), &ras.HelloRequest{Name: node.Addr})
+    	// 	if err != nil {
+        // 		fmt.Println("Error making request to %s: %v", peer, err)
+    	// 	}
+		// 	//Og her printer den ellers respons message.
+		// 	fmt.Println("I am Node(", node.Addr, ") and i got this response", response.Message,)
+		// 	fmt.Println("...")
+		// }
 	}
 }
 
@@ -88,17 +105,39 @@ func (node *Node) SetupClient(addr string) {
 	}
 
 	node.mu.Lock()
-	node.Peers[addr] = hs.NewHelloServiceClient(conn) //Create a new HelloServiceclient and map it with its address.
+	node.Peers[addr] = ras.NewRicartAgrawalaClient(conn) //Create a new HelloServiceclient and map it with its address.
 	fmt.Println("Node(", node.Addr ,") has connected to Node(",addr, ")") //Print that the connection happened.
 	node.mu.Unlock()
-
-	
 }
 
 //Grpc endpoint.
-func (node *Node) SayHello(ctx context.Context, req *hs.HelloRequest) (*hs.HelloReply, error) {
-	fmt.Println("I am Node(", node.Addr, ") and i just recieved a gRPC call from Node(", req.Name, ")")
+func (node *Node) Request(ctx context.Context, req *ras.RequestMsg) (*ras.Ack, error) {
+	fmt.Println("I am Node(", node.Id, ") and i just recieved a gRPC call from Node(", req.NodeId, ")")
 	fmt.Println("...")
-	message := fmt.Sprintf("Hello from %s!", node.Addr)
-	return &hs.HelloReply{Message: message}, nil
+	node.HandleRequest(req)
+	return &ras.Ack{Status: 200}, nil
+}
+
+func (node *Node) HandleRequest(req *ras.RequestMsg) {
+	if node.state == HELD || 
+				(node.state == WANTED && node.CompareRequest( req.LPTimestamp, req.NodeId)){
+		node.ReqQueue = append(node.ReqQueue, req.Addr) //Tilføjer Node til vores reqQueue, da vi vil svare den senere
+	} else {
+		reqNode := Peers[req.Addr]
+		reqNode.Response(&ras.ResponseMsg{LPTimestamp: node.LPTimestamp})
+	}
+}
+
+func (node *Node) CompareRequest(timeStamp int32, id string) bool{
+	if node.LPTimestamp < timeStamp {
+		return true
+	} else if node.LPTimestamp > timeStamp {
+		return false
+	} else if node.LPTimestamp == timeStamp {
+		if node.Id < id {
+			return true
+		} else {
+			return false
+		}
+	}
 }
