@@ -46,12 +46,12 @@ func (vz *VerbotenZone) Start() error {
 
 func (vz *VerbotenZone) GoIn(ctx context.Context, vzMsg *ras.VerbotenZoneMsg) (*ras.Ack, error){
 	vz.t ++
-	fmt.Println("VZ: Node ", vzMsg.Id, "accessed the VerbotenZone at LP", vz.t)
+	fmt.Println("VZ: Node ", vzMsg.Id, "accessed the VerbotenZone at time", vz.t)
 	return &ras.Ack{Status: 200}, nil
 }
 
 func (vz *VerbotenZone) GoOut(ctx context.Context, vzMsg *ras.VerbotenZoneMsg) (*ras.Ack, error){
 	vz.t ++
-	fmt.Println("VZ: Node ", vzMsg.Id, "left the VerbotenZone at LP", vz.t)
+	fmt.Println("VZ: Node ", vzMsg.Id, "left the VerbotenZone at time", vz.t)
 	return &ras.Ack{Status: 200}, nil
 }

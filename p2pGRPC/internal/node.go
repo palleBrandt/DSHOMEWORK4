@@ -3,14 +3,14 @@ package node
 import (
 	"fmt"
 	"log"
-	"net"
 	"math/rand"
-	"time"
+	"net"
 	"sync"
-	
+	"time"
+
 	"golang.org/x/net/context"
-	ras "p2p.com/proto"
 	"google.golang.org/grpc"
+	ras "p2p.com/proto"
 )
 
 //De forskellige states en node kan have.
@@ -33,6 +33,7 @@ type Node struct {
 	mu 					sync.Mutex
 	Peers 				map[string]ras.RicartAgrawalaServiceClient
 	ReqQueue			[]string
+	VZ					ras.VerbotenZoneServiceClient
 
 	ras.UnimplementedRicartAgrawalaServiceServer //Denne her er nødvendig for at Node implementerer server interfacet genereret af protofilen.
 }
@@ -56,15 +57,18 @@ func (node *Node) StartListening() {
 
 //Dette er nodens "main" function.
 func (node *Node) Start() error {
+	node.ConnectToVZ()
 	node.Peers = make(map[string]ras.RicartAgrawalaServiceClient) //Instantierer nodens map over peers.
 	node.LPTimestamp = 0
 	node.ResponseCounter = 0
+	node.mu.Lock()
 	node.state = RELEASED
-	node.ReqQueue = make([]string, 0 , 10)
+	node.mu.Unlock()
+	node.ReqQueue = node.ReqQueue[:0]
 	go node.StartListening() //Go routine med kald til "server" funktionaliteten.
 
 	//Hardcoded list af servere
-	hardcodedIPs := []string{"localhost:50051", "localhost:50052", "localhost:50053", "localhost:50054"}
+	hardcodedIPs := []string{"localhost:50051", "localhost:50052", "localhost:50053"}
 
 	//Run through each of the IPs
 	for _, addr := range hardcodedIPs {
@@ -80,12 +84,15 @@ func (node *Node) Start() error {
 	//Dette er mest bare en default funktionalitet jeg har lagt ind i noderne for at man kan se at der sker noget og at forbindelserne virker.
 	//Hver node sover mellem 0-5 sekunder, og så kalder de ellers sayHello gRPC endpoint i sine peers.
 	for {
-		time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
+		time.Sleep(time.Duration(rand.Intn(3)) * time.Second)
 		node.ResponseCounter = 0;
-		node.state = WANTED;
 		node.LPTimestamp ++
+		node.mu.Lock()
+		node.state = WANTED;
+		node.mu.Unlock()
 		for key, Peer := range node.Peers {
 			node.LPTimestamp ++;
+			fmt.Println("Node(", node.Id, ") i am requesting at LPT(", node.LPTimestamp, ")")
 			_, err := Peer.Request(context.Background(), &ras.RequestMsg{NodeId: node.Id, LPTimestamp: node.LPTimestamp, Addr: node.Addr})
 			if err != nil {
 				fmt.Println("Error making request to ", key)
@@ -93,21 +100,39 @@ func (node *Node) Start() error {
 		}
 		for {
 			if node.ResponseCounter == len(node.Peers){
+				node.LPTimestamp ++
+				node.mu.Lock()
 				node.state = HELD
+				node.mu.Unlock()
+				node.VZ.GoIn(context.Background(), &ras.VerbotenZoneMsg{Id: node.Id})
+				time.Sleep(time.Duration(1) * time.Second)
+				node.VZ.GoOut(context.Background(), &ras.VerbotenZoneMsg{Id: node.Id})
 				node.LPTimestamp ++
-				
-				time.Sleep(time.Duration(5) * time.Second)
+				node.mu.Lock()
 				node.state = RELEASED
-				node.LPTimestamp ++
 				for _, addr := range node.ReqQueue{ //Runs through the possible requst there have been received while wanting the verboten-zone
 					node.LPTimestamp ++;
-					node.Peers[addr].Response(context.Background(), &ras.ResponseMsg{LPTimestamp: node.LPTimestamp})
+					fmt.Println("Node(", node.Id, ") i am responding at LPT(", node.LPTimestamp, ")")
+					node.Peers[addr].Response(context.Background(), &ras.ResponseMsg{LPTimestamp: node.LPTimestamp, NodeId: node.Id})
 				}
-				fmt.Println("Im not in the verboten-zone", node.Id, "at LPT", node.LPTimestamp)
+				node.ReqQueue = make([]string, 0 , 10)
+				node.mu.Unlock()
+				// fmt.Println("Im not in the verboten-zone", node.Id, "at LPT", node.LPTimestamp)
 				break
 			}
 		}
 	}
+}
+
+func (node *Node) ConnectToVZ() {
+	conn, err := grpc.Dial("localhost:50054", grpc.WithInsecure()) //Dial op connection to the address
+	if err != nil {
+		log.Printf("Unable to connect to VZ")
+		return
+	}
+	node.mu.Lock()
+	node.VZ = ras.NewVerbotenZoneServiceClient(conn)
+	node.mu.Unlock()
 }
 
 //Denne metode skaber forbindelsen til de andre noder, som for denne ene node forståes som clienter.
@@ -126,21 +151,26 @@ func (node *Node) SetupClient(addr string) {
 
 //Grpc endpoint.
 func (node *Node) Request(ctx context.Context, req *ras.RequestMsg) (*ras.Ack, error) {
-	node.LPTimestamp = MaxInt32(node.LPTimestamp, req.LPTimestamp) +1
-	fmt.Println("I am Node(", node.Id, ") and i just recieved a gRPC request from Node(", req.NodeId, ") at LPT(", node.LPTimestamp, ")")
-	fmt.Println("...")
+	
 	node.HandleRequest(req)
 	return &ras.Ack{Status: 200}, nil
 }
 
 func (node *Node) HandleRequest(req *ras.RequestMsg) {
+	node.mu.Lock()
 	if node.state == HELD || 
 				(node.state == WANTED && node.CompareRequest( req.LPTimestamp, req.NodeId)){
-		node.ReqQueue = append(node.ReqQueue, req.Addr) //Tilføjer Node til vores reqQueue, da vi vil svare den senere
+		node.ReqQueue = append(node.ReqQueue, req.Addr)
+		node.LPTimestamp = MaxInt32(node.LPTimestamp, req.LPTimestamp) +1 //Tilføjer Node til vores reqQueue, da vi vil svare den senere
 	} else {
+		node.LPTimestamp = MaxInt32(node.LPTimestamp, req.LPTimestamp) +1
 		reqNode := node.Peers[req.Addr]
-		reqNode.Response(context.Background(), &ras.ResponseMsg{LPTimestamp: node.LPTimestamp})
+		node.LPTimestamp ++
+		reqNode.Response(context.Background(), &ras.ResponseMsg{LPTimestamp: node.LPTimestamp, NodeId: node.Id})
 	}
+	fmt.Println("I am Node(", node.Id, ") and i just recieved a gRPC request from Node(", req.NodeId, ") at LPT(", node.LPTimestamp, ")")
+	fmt.Println("...")
+	node.mu.Unlock()
 }
 
 func (node *Node) CompareRequest(timeStamp int32, id int32) bool{
@@ -159,9 +189,11 @@ func (node *Node) CompareRequest(timeStamp int32, id int32) bool{
 
 func (node *Node) Response(ctx context.Context, res *ras.ResponseMsg) (*ras.Ack, error){
 	node.LPTimestamp = MaxInt32(node.LPTimestamp, res.LPTimestamp) +1
-	fmt.Println("I am Node(", node.Id, ") and i just recieved a gRPC Response (", node.LPTimestamp, ")")
+	fmt.Println("I am Node(", node.Id, ") and i just recieved a gRPC Response (", res.NodeId, ") at LPT(", node.LPTimestamp, ")")
 	fmt.Println("...")
+	node.mu.Lock()
 	node.ResponseCounter ++
+	node.mu.Unlock()
 	return &ras.Ack{Status: 200}, nil
 }
 

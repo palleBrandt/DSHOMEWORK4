@@ -24,7 +24,8 @@ message RequestMsg {
 }
 
 message ResponseMsg {
-    int32 LPTimestamp = 1;
+    int32 NodeId = 1;
+    int32 LPTimestamp = 2;
 }
 
 message Ack {
