@@ -10,32 +10,21 @@ import (
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	ras "p2p.com/proto"
+	TRS "p2p.com/proto"
 )
 
-//De forskellige states en node kan have.
-type State int
-
-const (
-	RELEASED State = iota //Gør at værdierne forståes som integers, og sætter RELEASED til 0, WANTED til 1 og HELD til 2. Samt sætter RELEASED til initial værdi af state.
-	WANTED
-	HELD
-)
 
 //Creates the Node Struct. Definerer ligesom atts
 type Node struct {
-
-	state 				State
+	wanted				bool
 	Addr 				string
 	Id 					int32
-	ResponseCounter 	int
-	LPTimestamp 		int32
 	mu 					sync.Mutex
-	Peers 				map[string]ras.RicartAgrawalaServiceClient
-	ReqQueue			[]string
-	VZ					ras.VerbotenZoneServiceClient
+	Peers 				map[string]TRS.TokenRingServiceClient
+	VZ					TRS.VerbotenZoneServiceClient
+	nextNode			string
 
-	ras.UnimplementedRicartAgrawalaServiceServer //Denne her er nødvendig for at Node implementerer server interfacet genereret af protofilen.
+	TRS.UnimplementedTokenRingServiceServer //Denne her er nødvendig for at Node implementerer server interfacet genereret af protofilen.
 }
 
 //Denne metode "åbner" nodens server funtionalitet op. Definerer hvilket port noden er på.
@@ -47,7 +36,7 @@ func (node *Node) StartListening() {
 	}
 
 	grpcServer := grpc.NewServer()
-	ras.RegisterRicartAgrawalaServiceServer(grpcServer, node) //Dette registrerer noden som en værende en HelloServiceServer.
+	TRS.RegisterTokenRingServiceServer(grpcServer, node) //Dette registrerer noden som en værende en TokenRingServiceServer.
 
 	// Start listening for incoming connections
 	if err := grpcServer.Serve(lis); err != nil {
@@ -58,69 +47,54 @@ func (node *Node) StartListening() {
 //Dette er nodens "main" function.
 func (node *Node) Start() error {
 	node.ConnectToVZ()
-	node.Peers = make(map[string]ras.RicartAgrawalaServiceClient) //Instantierer nodens map over peers.
-	node.LPTimestamp = 0
-	node.ResponseCounter = 0
-	node.mu.Lock()
-	node.state = RELEASED
-	node.mu.Unlock()
-	node.ReqQueue = node.ReqQueue[:0]
-	go node.StartListening() //Go routine med kald til "server" funktionaliteten.
+	node.wanted = false;
+	node.Peers = make(map[string]TRS.TokenRingServiceClient) //Instantierer nodens map over peers.
 
 	//Hardcoded list af servere
 	hardcodedIPs := []string{"localhost:50051", "localhost:50052", "localhost:50053"}
+	go node.StartListening() //Go routine med kald til "server" funktionaliteten.
 
-	//Run through each of the IPs
+	foundMatchingAddr := false
+	neverfoundmatch := true
+	// Run through each of the IPs
 	for _, addr := range hardcodedIPs {
 		// Skip the current node
 		if addr == node.Addr {
-			continue //If the addr is the addr of the node, skip this.
+			foundMatchingAddr = true
+			neverfoundmatch = false
+			continue // If the addr is the addr of the node, skip this.
+		}
+
+		// Check if the matching address is found
+		if foundMatchingAddr {
+			// Perform your desired action with the addr here
+			node.nextNode = addr
+			foundMatchingAddr = false	
 		}
 
 		// Setup connection to each other node, and map the connection to the addr in peers.
 		node.SetupClient(addr)
 	}
+	if neverfoundmatch {
+		node.nextNode = hardcodedIPs[0]
+	}
 
-	//Dette er mest bare en default funktionalitet jeg har lagt ind i noderne for at man kan se at der sker noget og at forbindelserne virker.
-	//Hver node sover mellem 0-5 sekunder, og så kalder de ellers sayHello gRPC endpoint i sine peers.
+	//If you are the first node, then you are the first with token, and you start the ring.
+	if node.Id == 1{
+		node.Peers[node.nextNode].GiveToken(context.Background(), &TRS.Token{Token: true})
+	}
 	for {
-		time.Sleep(time.Duration(rand.Intn(3)) * time.Second)
-		node.ResponseCounter = 0;
-		node.LPTimestamp ++
+		time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
 		node.mu.Lock()
-		node.state = WANTED;
+		node.wanted = true
 		node.mu.Unlock()
-		for key, Peer := range node.Peers {
-			node.LPTimestamp ++;
-			fmt.Println("Node(", node.Id, ") i am requesting at LPT(", node.LPTimestamp, ")")
-			_, err := Peer.Request(context.Background(), &ras.RequestMsg{NodeId: node.Id, LPTimestamp: node.LPTimestamp, Addr: node.Addr})
-			if err != nil {
-				fmt.Println("Error making request to ", key)
-			}
-		}
+
 		for {
-			if node.ResponseCounter == len(node.Peers){
-				node.LPTimestamp ++
-				node.mu.Lock()
-				node.state = HELD
-				node.mu.Unlock()
-				node.VZ.GoIn(context.Background(), &ras.VerbotenZoneMsg{Id: node.Id})
-				time.Sleep(time.Duration(1) * time.Second)
-				node.VZ.GoOut(context.Background(), &ras.VerbotenZoneMsg{Id: node.Id})
-				node.LPTimestamp ++
-				node.mu.Lock()
-				node.state = RELEASED
-				for _, addr := range node.ReqQueue{ //Runs through the possible requst there have been received while wanting the verboten-zone
-					node.LPTimestamp ++;
-					fmt.Println("Node(", node.Id, ") i am responding at LPT(", node.LPTimestamp, ")")
-					node.Peers[addr].Response(context.Background(), &ras.ResponseMsg{LPTimestamp: node.LPTimestamp, NodeId: node.Id})
-				}
-				node.ReqQueue = make([]string, 0 , 10)
-				node.mu.Unlock()
-				// fmt.Println("Im not in the verboten-zone", node.Id, "at LPT", node.LPTimestamp)
+			if node.wanted == false {
 				break
 			}
 		}
+
 	}
 }
 
@@ -131,7 +105,7 @@ func (node *Node) ConnectToVZ() {
 		return
 	}
 	node.mu.Lock()
-	node.VZ = ras.NewVerbotenZoneServiceClient(conn)
+	node.VZ = TRS.NewVerbotenZoneServiceClient(conn)
 	node.mu.Unlock()
 }
 
@@ -144,63 +118,39 @@ func (node *Node) SetupClient(addr string) {
 	}
 
 	node.mu.Lock()
-	node.Peers[addr] = ras.NewRicartAgrawalaServiceClient(conn) //Create a new HelloServiceclient and map it with its address.
+	node.Peers[addr] = TRS.NewTokenRingServiceClient(conn) //Create a new tokenringclient and map it with its address.
 	fmt.Println("Node(", node.Addr ,") has connected to Node(",addr, ")") //Print that the connection happened.
 	node.mu.Unlock()
 }
 
 //Grpc endpoint.
-func (node *Node) Request(ctx context.Context, req *ras.RequestMsg) (*ras.Ack, error) {
-	
-	node.HandleRequest(req)
-	return &ras.Ack{Status: 200}, nil
-}
-
-func (node *Node) HandleRequest(req *ras.RequestMsg) {
-	node.mu.Lock()
-	if node.state == HELD || 
-				(node.state == WANTED && node.CompareRequest( req.LPTimestamp, req.NodeId)){
-		node.ReqQueue = append(node.ReqQueue, req.Addr)
-		node.LPTimestamp = MaxInt32(node.LPTimestamp, req.LPTimestamp) +1 //Tilføjer Node til vores reqQueue, da vi vil svare den senere
-	} else {
-		node.LPTimestamp = MaxInt32(node.LPTimestamp, req.LPTimestamp) +1
-		reqNode := node.Peers[req.Addr]
-		node.LPTimestamp ++
-		reqNode.Response(context.Background(), &ras.ResponseMsg{LPTimestamp: node.LPTimestamp, NodeId: node.Id})
-	}
-	fmt.Println("I am Node(", node.Id, ") and i just recieved a gRPC request from Node(", req.NodeId, ") at LPT(", node.LPTimestamp, ")")
-	fmt.Println("...")
-	node.mu.Unlock()
-}
-
-func (node *Node) CompareRequest(timeStamp int32, id int32) bool{
-	if node.LPTimestamp < timeStamp {
-		return true
-	} else if node.LPTimestamp > timeStamp {
-		return false
-	} else {
-		if node.Id < id {
-			return true
-		} else {
-			return false
+func (node *Node) GiveToken(ctx context.Context, tok *TRS.Token) (*TRS.Ack, error) {
+	if node.wanted {
+		//access verboten zone
+		_, err := node.VZ.GoIn(context.Background(), &TRS.VerbotenZoneMsg{Id: node.Id}) //Dial op connection to the address
+		if err != nil {
+			log.Printf("Unable to access verboten zone")
+			return &TRS.Ack{Status: 401}, err
 		}
-	} 
-}
+		time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
 
-func (node *Node) Response(ctx context.Context, res *ras.ResponseMsg) (*ras.Ack, error){
-	node.LPTimestamp = MaxInt32(node.LPTimestamp, res.LPTimestamp) +1
-	fmt.Println("I am Node(", node.Id, ") and i just recieved a gRPC Response (", res.NodeId, ") at LPT(", node.LPTimestamp, ")")
-	fmt.Println("...")
-	node.mu.Lock()
-	node.ResponseCounter ++
-	node.mu.Unlock()
-	return &ras.Ack{Status: 200}, nil
-}
-
-func MaxInt32(a,b int32) int32{
-	if a > b {
-		return a
-	} else {
-		return b
+		//leave verbotenzone
+		response, err := node.VZ.GoOut(context.Background(), &TRS.VerbotenZoneMsg{Id: node.Id}) //Dial op connection to the address
+		if err != nil {
+			log.Printf("unable:", response.Status)
+			return &TRS.Ack{Status: 401}, err
+		}
+		node.mu.Lock()
+		node.wanted = false
+		node.mu.Unlock()
 	}
+
+	//pass token
+	nextNodeClient := node.Peers[node.nextNode]
+	_, err := nextNodeClient.GiveToken(context.Background(), &TRS.Token{Token: true}) //Dial op connection to the address
+	if err != nil {
+		log.Printf("Unable to pass token")
+		return &TRS.Ack{Status: 401}, err
+	}
+	return &TRS.Ack{Status: 200}, err
 }

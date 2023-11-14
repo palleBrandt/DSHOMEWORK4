@@ -8,7 +8,7 @@ import (
 	"log"
 
 	"golang.org/x/net/context"
-	ras "p2p.com/proto"
+	TRS "p2p.com/proto"
 	"google.golang.org/grpc"
 )
 
@@ -16,7 +16,7 @@ type VerbotenZone struct {
 	//Maakes it possible to lock the server
 	sync.Mutex
     // an interface that the server type needs to have
-    ras.UnimplementedVerbotenZoneServiceServer
+    TRS.UnimplementedVerbotenZoneServiceServer
 
 	// A list of all streams created between the clients and the server
 	t int32;
@@ -29,7 +29,7 @@ func (vz *VerbotenZone) StartListening() {
 	}
 
 	grpcServer := grpc.NewServer()
-	ras.RegisterVerbotenZoneServiceServer(grpcServer, vz) //Dette registrerer noden som en værende en HelloServiceServer.
+	TRS.RegisterVerbotenZoneServiceServer(grpcServer, vz) //Dette registrerer noden som en værende en HelloServiceServer.
 
 	// Start listening for incoming connections
 	if err := grpcServer.Serve(lis); err != nil {
@@ -44,14 +44,14 @@ func (vz *VerbotenZone) Start() error {
 	for{}
 }
 
-func (vz *VerbotenZone) GoIn(ctx context.Context, vzMsg *ras.VerbotenZoneMsg) (*ras.Ack, error){
+func (vz *VerbotenZone) GoIn(ctx context.Context, vzMsg *TRS.VerbotenZoneMsg) (*TRS.Ack, error){
 	vz.t ++
 	fmt.Println("VZ: Node ", vzMsg.Id, "accessed the VerbotenZone at time", vz.t)
-	return &ras.Ack{Status: 200}, nil
+	return &TRS.Ack{Status: 200}, nil
 }
 
-func (vz *VerbotenZone) GoOut(ctx context.Context, vzMsg *ras.VerbotenZoneMsg) (*ras.Ack, error){
+func (vz *VerbotenZone) GoOut(ctx context.Context, vzMsg *TRS.VerbotenZoneMsg) (*TRS.Ack, error){
 	vz.t ++
 	fmt.Println("VZ: Node ", vzMsg.Id, "left the VerbotenZone at time", vz.t)
-	return &ras.Ack{Status: 200}, nil
+	return &TRS.Ack{Status: 200}, nil
 }
