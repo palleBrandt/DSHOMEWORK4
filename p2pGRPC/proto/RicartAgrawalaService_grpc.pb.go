@@ -139,3 +139,125 @@ var RicartAgrawalaService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "proto/RicartAgrawalaService.proto",
 }
+
+// VerbotenZoneServiceClient is the client API for VerbotenZoneService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type VerbotenZoneServiceClient interface {
+	GoIn(ctx context.Context, in *VerbotenZoneMsg, opts ...grpc.CallOption) (*Ack, error)
+	GoOut(ctx context.Context, in *VerbotenZoneMsg, opts ...grpc.CallOption) (*Ack, error)
+}
+
+type verbotenZoneServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewVerbotenZoneServiceClient(cc grpc.ClientConnInterface) VerbotenZoneServiceClient {
+	return &verbotenZoneServiceClient{cc}
+}
+
+func (c *verbotenZoneServiceClient) GoIn(ctx context.Context, in *VerbotenZoneMsg, opts ...grpc.CallOption) (*Ack, error) {
+	out := new(Ack)
+	err := c.cc.Invoke(ctx, "/proto.VerbotenZoneService/GoIn", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *verbotenZoneServiceClient) GoOut(ctx context.Context, in *VerbotenZoneMsg, opts ...grpc.CallOption) (*Ack, error) {
+	out := new(Ack)
+	err := c.cc.Invoke(ctx, "/proto.VerbotenZoneService/GoOut", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// VerbotenZoneServiceServer is the server API for VerbotenZoneService service.
+// All implementations must embed UnimplementedVerbotenZoneServiceServer
+// for forward compatibility
+type VerbotenZoneServiceServer interface {
+	GoIn(context.Context, *VerbotenZoneMsg) (*Ack, error)
+	GoOut(context.Context, *VerbotenZoneMsg) (*Ack, error)
+	mustEmbedUnimplementedVerbotenZoneServiceServer()
+}
+
+// UnimplementedVerbotenZoneServiceServer must be embedded to have forward compatible implementations.
+type UnimplementedVerbotenZoneServiceServer struct {
+}
+
+func (UnimplementedVerbotenZoneServiceServer) GoIn(context.Context, *VerbotenZoneMsg) (*Ack, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GoIn not implemented")
+}
+func (UnimplementedVerbotenZoneServiceServer) GoOut(context.Context, *VerbotenZoneMsg) (*Ack, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GoOut not implemented")
+}
+func (UnimplementedVerbotenZoneServiceServer) mustEmbedUnimplementedVerbotenZoneServiceServer() {}
+
+// UnsafeVerbotenZoneServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to VerbotenZoneServiceServer will
+// result in compilation errors.
+type UnsafeVerbotenZoneServiceServer interface {
+	mustEmbedUnimplementedVerbotenZoneServiceServer()
+}
+
+func RegisterVerbotenZoneServiceServer(s grpc.ServiceRegistrar, srv VerbotenZoneServiceServer) {
+	s.RegisterService(&VerbotenZoneService_ServiceDesc, srv)
+}
+
+func _VerbotenZoneService_GoIn_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VerbotenZoneMsg)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VerbotenZoneServiceServer).GoIn(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.VerbotenZoneService/GoIn",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VerbotenZoneServiceServer).GoIn(ctx, req.(*VerbotenZoneMsg))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VerbotenZoneService_GoOut_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VerbotenZoneMsg)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VerbotenZoneServiceServer).GoOut(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.VerbotenZoneService/GoOut",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VerbotenZoneServiceServer).GoOut(ctx, req.(*VerbotenZoneMsg))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// VerbotenZoneService_ServiceDesc is the grpc.ServiceDesc for VerbotenZoneService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var VerbotenZoneService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "proto.VerbotenZoneService",
+	HandlerType: (*VerbotenZoneServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GoIn",
+			Handler:    _VerbotenZoneService_GoIn_Handler,
+		},
+		{
+			MethodName: "GoOut",
+			Handler:    _VerbotenZoneService_GoOut_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "proto/RicartAgrawalaService.proto",
+}

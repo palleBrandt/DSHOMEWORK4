@@ -8,6 +8,15 @@ service RicartAgrawalaService {
     rpc Response (ResponseMsg) returns (Ack) {}
 }
 
+service VerbotenZoneService{
+    rpc GoIn (VerbotenZoneMsg) returns (Ack) {}
+    rpc GoOut (VerbotenZoneMsg) returns (Ack) {}
+}
+
+message VerbotenZoneMsg{
+    int32 Id =1;
+}
+
 message RequestMsg {
     int32 NodeId = 1;
     int32 LPTimestamp = 2;
