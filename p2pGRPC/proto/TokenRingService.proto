@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+option go_package = "p2p/proto";
+package proto;
+
+service TokenRingService {
+    rpc GiveToken (Token) returns (Ack) {}
+}
+
+service VerbotenZoneService{
+    rpc GoIn (VerbotenZoneMsg) returns (Ack) {}
+    rpc GoOut (VerbotenZoneMsg) returns (Ack) {}
+}
+
+message VerbotenZoneMsg{
+    int32 Id =1;
+}
+
+message Token{
+    bool token = 1;
+}
+
+message Ack {
+    int32 Status = 1;
+}
