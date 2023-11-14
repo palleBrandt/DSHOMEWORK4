@@ -22,7 +22,7 @@ type Node struct {
 	mu 					sync.Mutex
 	Peers 				map[string]TRS.TokenRingServiceClient
 	VZ					TRS.VerbotenZoneServiceClient
-	nextNode			string
+	nextNode			TRS.TokenRingServiceClient
 
 	TRS.UnimplementedTokenRingServiceServer //Denne her er nødvendig for at Node implementerer server interfacet genereret af protofilen.
 }
@@ -52,7 +52,7 @@ func (node *Node) Start() error {
 
 	//Hardcoded list af servere
 	hardcodedIPs := []string{"localhost:50051", "localhost:50052", "localhost:50053"}
-	go node.StartListening() //Go routine med kald til "server" funktionaliteten.
+	
 
 	foundMatchingAddr := false
 	neverfoundmatch := true
@@ -61,27 +61,29 @@ func (node *Node) Start() error {
 		// Skip the current node
 		if addr == node.Addr {
 			foundMatchingAddr = true
-			neverfoundmatch = false
 			continue // If the addr is the addr of the node, skip this.
 		}
 
 		// Check if the matching address is found
 		if foundMatchingAddr {
+			neverfoundmatch = false
 			// Perform your desired action with the addr here
-			node.nextNode = addr
 			foundMatchingAddr = false	
+			node.SetupClient(addr) // Setup connection to each other node, and map the connection to the addr in peers.
 		}
-
-		// Setup connection to each other node, and map the connection to the addr in peers.
-		node.SetupClient(addr)
+		
+		
 	}
 	if neverfoundmatch {
-		node.nextNode = hardcodedIPs[0]
+		node.SetupClient(hardcodedIPs[0])
 	}
 
+	go node.StartListening() //Go routine med kald til "server" funktionaliteten.
+
 	//If you are the first node, then you are the first with token, and you start the ring.
+	time.Sleep(time.Duration(3) * time.Second)
 	if node.Id == 1{
-		node.Peers[node.nextNode].GiveToken(context.Background(), &TRS.Token{Token: true})
+		go node.nextNode.GiveToken(context.Background(), &TRS.Token{Token: true})
 	}
 	for {
 		time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
@@ -118,13 +120,14 @@ func (node *Node) SetupClient(addr string) {
 	}
 
 	node.mu.Lock()
-	node.Peers[addr] = TRS.NewTokenRingServiceClient(conn) //Create a new tokenringclient and map it with its address.
+	node.nextNode = TRS.NewTokenRingServiceClient(conn) //Create a new tokenringclient and map it with its address.
 	fmt.Println("Node(", node.Addr ,") has connected to Node(",addr, ")") //Print that the connection happened.
 	node.mu.Unlock()
 }
 
 //Grpc endpoint.
 func (node *Node) GiveToken(ctx context.Context, tok *TRS.Token) (*TRS.Ack, error) {
+	fmt.Println("Node ", node.Id ," called GiveToken")
 	if node.wanted {
 		//access verboten zone
 		_, err := node.VZ.GoIn(context.Background(), &TRS.VerbotenZoneMsg{Id: node.Id}) //Dial op connection to the address
@@ -146,11 +149,12 @@ func (node *Node) GiveToken(ctx context.Context, tok *TRS.Token) (*TRS.Ack, erro
 	}
 
 	//pass token
-	nextNodeClient := node.Peers[node.nextNode]
-	_, err := nextNodeClient.GiveToken(context.Background(), &TRS.Token{Token: true}) //Dial op connection to the address
+	_, err := node.nextNode.GiveToken(ctx, &TRS.Token{Token: true})
 	if err != nil {
-		log.Printf("Unable to pass token")
+		log.Printf("Unable to pass token: %v", err)
 		return &TRS.Ack{Status: 401}, err
 	}
-	return &TRS.Ack{Status: 200}, err
+
+	return &TRS.Ack{Status: 200}, nil
 }
+
